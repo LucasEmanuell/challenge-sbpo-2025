@@ -18,54 +18,58 @@ public class ChallengeSolver {
     protected int waveSizeUB;                       // Limite superior do tamanho da wave (UB)
 
     public ChallengeSolver(
-            List<Map<Integer, Integer>> orders, List<Map<Integer, Integer>> aisles,
-            int nItems, int waveSizeLB, int waveSizeUB) {
-        this.orders = orders;
-        this.aisles = aisles;
-        this.nItems = nItems;
-        this.waveSizeLB = waveSizeLB;
-        this.waveSizeUB = waveSizeUB;
-    }
+        List<Map<Integer, Integer>> orders, 
+        List<Map<Integer, Integer>> aisles, 
+        int nItems, 
+        int waveSizeLB, 
+        int waveSizeUB) {
+    this.orders = orders;
+    this.aisles = aisles;
+    this.nItems = nItems;
+    this.waveSizeLB = waveSizeLB;
+    this.waveSizeUB = waveSizeUB;
+}
 
-    public ChallengeSolution solve(StopWatch stopWatch) {
-        try {
-            IloCplex cplex = new IloCplex();
-            cplex.setParam(IloCplex.Param.TimeLimit, getRemainingTime(stopWatch));
+public ChallengeSolution solve(StopWatch stopWatch) {
+    try {
+        IloCplex cplex = new IloCplex();
+        cplex.setParam(IloCplex.Param.TimeLimit, getRemainingTime(stopWatch));
 
-            // ---------------------------------------------------------------
-            // Variáveis de decisão
-            // ---------------------------------------------------------------
-            // x_o = 1 se o pedido o está na wave
-            IloIntVar[] x = new IloIntVar[orders.size()];
+        // --------------------------------------------
+        // Cálculo do Alpha Dinâmico
+        // --------------------------------------------
+        double avgUnitsPerOrder = orders.stream()
+            .mapToInt(order -> order.values().stream().mapToInt(Integer::intValue).sum())
+            .average()
+            .orElse(1.0); // Evita divisão por zero
 
-            // y_a = 1 se o corredor a é utilizado
-            IloIntVar[] y = new IloIntVar[aisles.size()];
+        // Alpha proporcional à média de unidades por pedido e ao UB
+        double alpha = -avgUnitsPerOrder * (waveSizeUB / 10.0); 
 
-            for (int i = 0; i < orders.size(); i++) {
-                x[i] = cplex.boolVar("x_" + i);
-            }
+        // --------------------------------------------
+        // Variáveis e Função Objetivo
+        // --------------------------------------------
+        IloIntVar[] x = new IloIntVar[orders.size()];
+        IloIntVar[] y = new IloIntVar[aisles.size()];
 
-            for (int j = 0; j < aisles.size(); j++) {
-                y[j] = cplex.boolVar("y_" + j);
-            }
+        for (int i = 0; i < orders.size(); i++) {
+            x[i] = cplex.boolVar("x_" + i);
+        }
 
-            // ---------------------------------------------------------------
-            // Função Objetivo Linearizada
-            // ---------------------------------------------------------------
-            // Objetivo original: max (Σu_oi * x_o) / (Σy_a)
-            // Estratégia: Maximizar Σu_oi * x_o - α * Σy_a (α = penalidade por corredor)
-            IloLinearNumExpr obj = cplex.linearNumExpr();
-            for (int o = 0; o < orders.size(); o++) {
-                // Soma das unidades do pedido o (Σu_oi)
-                int units = orders.get(o).values().stream().mapToInt(Integer::intValue).sum();
-                obj.addTerm(units, x[o]);
-            }
-            for (int a = 0; a < aisles.size(); a++) {
-                // Penalização por uso de corredores (α = 1000)
-                obj.addTerm(-1000, y[a]);
-            }
-            cplex.addMaximize(obj);
+        for (int j = 0; j < aisles.size(); j++) {
+            y[j] = cplex.boolVar("y_" + j);
+        }
 
+        // Maximizar: (Total de unidades) + alpha * (Número de corredores)
+        IloLinearNumExpr obj = cplex.linearNumExpr();
+        for (int o = 0; o < orders.size(); o++) {
+            int units = orders.get(o).values().stream().mapToInt(Integer::intValue).sum();
+            obj.addTerm(units, x[o]);
+        }
+        for (int a = 0; a < aisles.size(); a++) {
+            obj.addTerm(alpha, y[a]); // Penalização adaptativa
+        }
+        cplex.addMaximize(obj);
             // ---------------------------------------------------------------
             // Restrições
             // ---------------------------------------------------------------
@@ -105,18 +109,16 @@ public class ChallengeSolver {
             // Resolução e Recuperação da Solução
             // ---------------------------------------------------------------
             if (cplex.solve()) {
+                // Recuperar solução
                 Set<Integer> selectedOrders = new HashSet<>();
+                Set<Integer> selectedAisles = new HashSet<>();
+
                 for (int o = 0; o < orders.size(); o++) {
-                    if (cplex.getValue(x[o]) > 0.9) { // Tolerância para valores binários
-                        selectedOrders.add(o);
-                    }
+                    if (cplex.getValue(x[o]) > 0.9) selectedOrders.add(o);
                 }
 
-                Set<Integer> selectedAisles = new HashSet<>();
                 for (int a = 0; a < aisles.size(); a++) {
-                    if (cplex.getValue(y[a]) > 0.9) {
-                        selectedAisles.add(a);
-                    }
+                    if (cplex.getValue(y[a]) > 0.9) selectedAisles.add(a);
                 }
 
                 return new ChallengeSolution(selectedOrders, selectedAisles);

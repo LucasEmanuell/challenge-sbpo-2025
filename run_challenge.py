@@ -4,11 +4,11 @@ import sys
 import platform
 
 # Paths to the libraries
-CPLEX_PATH = "$HOME/CPLEX_Studio2211/opl/bin/arm64_osx/"
+CPLEX_PATH = r"C:\Program Files\IBM\ILOG\CPLEX_Studio2212\cplex\bin\x64_win64"
 OR_TOOLS_PATH = "$HOME/Documents/or-tools/build/lib/"
 
 USE_CPLEX = True
-USE_OR_TOOLS = True
+USE_OR_TOOLS = False
 
 MAX_RUNNING_TIME = "605s"
 
@@ -62,7 +62,7 @@ def run_benchmark(source_folder, input_folder, output_folder):
                 if USE_CPLEX or USE_OR_TOOLS:
                     cmd.insert(3, f"-Djava.library.path={libraries}")
 
-                result = subprocess.run(cmd, stderr=subprocess.PIPE, text=True)
+                result = subprocess.run(cmd, stderr=subprocess.PIPE, text=True, shell=True)
                 if result.returncode != 0:
                     print(f"Execution failed for {input_file}:")
                     print(result.stderr)
